@@ -1,0 +1,2 @@
+# build directory contains vivado generated files and should be ignored
+build/

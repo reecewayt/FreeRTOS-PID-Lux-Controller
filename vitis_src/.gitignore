@@ -30,3 +30,4 @@ logs/
 *.lock
 .lock
 .cache
+app.yaml

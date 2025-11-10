@@ -2,41 +2,67 @@
 
 Firmware for a MicroBlaze-based embedded system that uses a TSL2561 luminosity sensor and a PID controller to stabilize an LED's light output. The system runs on FreeRTOS and lets you tune Kp, Ki, and Kd in real time using the board switches and buttons.
 
-TODO: this readme will need to be udpate once project setup is finalized.
+
 
 ## Quick overview
 
-- Target boards: Digilent Nexys A7 (Nexys4 DDR) and RealDigital Boolean Board. The design supports both; see "Hardware notes" below for differences.
-- Embedded CPU: MicroBlaze (AXI-based). Uses an AXI I2C peripheral to talk to the TSL2561 sensor, and PWM output to drive an external white LED.
-- Firmware: FreeRTOS-based application that implements a PID controller and a TSL2561 driver (tsl2561.c / tsl2561.h).
+- **Target boards:** Digilent Nexys A7 and Nexys 4 DDR. Both boards use the same Artix-7 FPGA (xc7a100tcsg324-1) and share nearly identical peripheral configurations. The primary difference is pin assignments for certain peripherals, which require board-specific constraint files (see Hardware Notes below).
+- **Embedded CPU:** MicroBlaze (AXI-based). Uses an AXI I2C peripheral to communicate with the TSL2561 sensor, and PWM output to drive an external white LED.
+- **Firmware:** FreeRTOS-based application that implements a PID controller and a TSL2561 driver (tsl2561.c / tsl2561.h).
+
+> **Hardware Notes:** The Nexys A7 and Nexys 4 DDR boards are functionally equivalent for this project, but use different pin assignments for peripheral connections in the top-level module. Board-specific constraint files are provided in `vivado_src/constraints/`:
+> - `nexys4fpga.xdc` - for Nexys 4 DDR
+> - `nexysA7fpga.xdc` - for Nexys A7
+> 
+> The `create_project.tcl` script adds both constraint files to the project but enables `nexys4fpga.xdc` by default. **Before synthesis, ensure the correct constraint file is enabled for your target board** by opening the project in Vivado GUI and toggling the constraint files in the Sources panel (right-click → Enable/Disable). 
 
 ## Quick start
 
-There are two common starting flows depending on what you want to do:
+### For hardware development (Vivado)
 
-1) Create the Vivado project, add IP, and generate the hardware platform (recommended for new users)
-
-From a machine with Vivado installed and available on PATH you can run the project setup TCL script. Open a shell (bash on Windows or a supported shell on Linux) and run:
-
+If you need to modify the hardware design, create the Vivado project using the provided TCL script. From a machine with Vivado installed, open vivado and use the tcl console to navigate to the scripts directory `scripts/create_project.tcl`. 
+Run the command: 
 ```bash
-# from repo root
-vivado -mode tcl -source scripts/create_project.tcl
+$ source create_project.tcl
 ```
+If all goes well vivado will then load the created project. 
 
 What the script does:
-- creates a Vivado project under `build/FreeRTOS_PID_Lux_Controller` (project name used by the script)
-- adds HDL, block design, and constraints from `vivado_src`
-- registers the local IP repo at `vivado_src/ip` so the included `nexys4io_3_0` IP appears in the IP catalog
+- Creates a Vivado project under `build/FreeRTOS_PID_Lux_Controller`
+- Adds HDL, block design, and constraints from `vivado_src/`
+- Registers the local IP repository at `vivado_src/ip/` so the included `nexys4io_3_0` IP appears in the IP catalog
 
-After Vivado finishes you can open the project in the GUI, implement, and export the hardware platform (.xsa) for Vitis.
+After the script completes, open the project in Vivado GUI, run synthesis/implementation, generate the bitstream, and export the hardware platform (`.xsa`) to `hw_platform/`.
 
-2) Skip Vivado project creation and use the pre-exported hardware platform (.xsa)
+### For firmware development (Vitis)
 
-If you only need to do firmware development in Vitis/Vivado/Vitis IDE, you can import the exported hardware platform (.xsa) found in `hw_platform/` directly into Vitis:
+If you're only doing firmware development, use the pre-exported hardware platform (`.xsa`) files already included in `hw_platform/`. Follow these steps to set up your Vitis workspace:
 
- - Open Vitis -> Create Platform Project -> Import hardware description -> point to `hw_platform/<your_platform>.xsa`.
+**Step 1: Open Vitis and set workspace**
+- Launch Vitis IDE
+- Set workspace to `vitis_src/` directory in this repository
+- You'll see existing applications in the workspace, but the hardware platform needs to be regenerated from the provided `.xsa` files
 
-This is faster for firmware-only work because it bypasses building the Vivado project on each workstation.
+**Step 2: Create the hardware platform component**
+- Go to **File → New Component → Platform**
+- Component name: `platform`
+- Component location: `vitis_src/` directory (should already be selected)
+- Click **Next**
+- Under "Hardware Design", click **Browse**
+  - Navigate to `hw_platform/nexys4_hw_platform.xsa` (for Nexys4 DDR) **or** `hw_platform/nexysa7_hw_platform.xsa` (for Nexys A7)
+  - Select the appropriate `.xsa` file for your board
+- Click **Next**
+- Verify:
+  - Processor: `microblaze_0`
+  - Operating System: `freertos`
+- Click **Finish**
+- Build the platform component (this generates the BSP and may take a few minutes)
+
+**Step 3: Build and run applications**
+- The application source code is included in the workspace (`freertos_hello_world/`, `free_rtos_example/`)
+- Once the platform build completes, you should be able to build and run the applications on your hardware
+- Right-click on an application → **Build Project**
+- Connect your board, program the FPGA, and run the application
 
 ## Project structure (key folders)
 
@@ -78,9 +104,9 @@ Tuning and behavior:
 
 ## User controls and I/O mapping
 
-The design uses Nexys4IO and standard board I/O. The following summarizes the mappings (handout names used, with Boolean board differences noted):
+The design uses Nexys4IO and standard board I/O. The following summarizes the mappings for both Nexys A7 and Nexys 4 DDR boards:
 
-- Switches (slide switches):
+- **Switches (slide switches):**
 	- Switches[7:6] — select which PID constant is edited when buttons are pressed:
 		- 01: adjust Kp
 		- 10: adjust Ki
@@ -91,14 +117,15 @@ The design uses Nexys4IO and standard board I/O. The following summarizes the ma
 	- Switch[1] — enable/disable integral (I)
 	- Switch[0] — enable/disable proportional (P)
 
-- Pushbuttons:
+- **Pushbuttons:**
 	- BtnU — increment the selected parameter (setpoint/Kp/Ki/Kd)
 	- BtnD — decrement the selected parameter
-	- Note: The Boolean board has only 4 pushbuttons. The project does not use BtnC; mappings are adjusted for the Boolean board as follows: {btnC(N/A), btnu(BTN0), btnd(BTN3), btnl(BTN2), btnr(BTN1)}. Also, the Boolean board lacks btnCpuReset; the project implements it as: btnCpuReset = ~(BTN0 & BTN1)
+	- BtnL, BtnR — available for additional functionality (optional)
+	- BtnC — not used in this design
 
-- LEDs / PWM:
-	- PWM output is routed to the Nexys4IO RGB1 Blue output (external LED on PMOD). Two RGB LEDs exist but numbering differs between boards: {RGB1(RGB0), RGB2(RGB1)} on Boolean.
-	- 16 on-board LEDs and 16 switches are available for debugging and status displays.
+- **LEDs / PWM:**
+	- PWM output is routed to the Nexys4IO RGB1 Blue output, then connected to an external LED on PMOD JC
+	- Both boards have 2 RGB LEDs and 16 standard LEDs available for debugging and status displays
 
 - 7-segment display:
 	- Digits[7:5] display the setpoint
@@ -117,58 +144,10 @@ The design uses Nexys4IO and standard board I/O. The following summarizes the ma
 	- `vitis_src/` — workspace where you create the Vitis platform project and application code.
 	- `vitis_src/src/` — application sources (main, PID task, sensor driver).
 
-- Vitis BSP settings: when creating the platform for the MicroBlaze, select FreeRTOS and, if needed, reduce heap size in the BSP settings:
-
-	Board Support Package -> Modify BSP Settings -> Overview -> freeRTOS10_xilinx
-
-## Vitis workspace setup and BSP regeneration
-
-The `vitis_src/` directory contains example FreeRTOS applications. The platform BSP is **not tracked in git** because it's auto-generated and large. Here's how to recreate it:
-
-### Recreate the platform BSP from .xsa
-
-**Option 1: Command-line (XSCT)**
-```bash
-cd vitis_src
-xsct
-# In XSCT shell:
-platform create -name platform -hw ../hw_platform/nexys4_hw_platform.xsa -os freertos -proc microblaze_0
-platform generate
-exit
-```
-
-**Option 2: Vitis IDE**
-1. Open Vitis IDE
-2. File → New → Platform Project
-3. Platform project name: `platform`
-4. Create from XSA → Browse to `hw_platform/nexys4_hw_platform.xsa` (or `nexysa7_hw_platform.xsa`)
-5. Operating system: `freertos`
-6. Processor: `microblaze_0`
-7. Click Finish and build the platform
-
-### What's tracked in git (vitis_src)
-
-- ✅ Application source code (`src/*.c`, `src/*.h`, `src/lscript.ld`, etc.)
-- ✅ Application configuration (`vitis-comp.json`, `app.yaml`)
-- ❌ `platform/` directory (BSP - regenerate from .xsa)
-- ❌ `build/` directories (compiled binaries)
-- ❌ `_ide/` directories (IDE metadata, bitstreams)
-
-### Example applications included
-
-- `freertos_hello_world/` - Basic FreeRTOS demo with LED blinking
-- `free_rtos_example/` - FreeRTOS task/queue/semaphore example with GPIO interrupts
-
-Use these as templates for your PID controller application.
-
-## How to run full flow (Vivado → Vitis)
-
-1. From the repo root, generate the Vivado project using the script (see Quick start).
-2. Open the generated project in Vivado, run synthesis/implementation and generate bitstream.
-3. Export hardware (File → Export → Export Hardware) and include the bitstream; save the `.xsa` to `hw_platform/`.
-4. Open Vitis, create the platform from the `.xsa` (see above), then create your application project.
-
-If you only need firmware development, skip steps 1–3 and use the `.xsa` already provided in `hw_platform/`.
+- Vitis BSP settings: If needed, you can adjust FreeRTOS configuration (heap size, stack size, etc.) after creating the platform:
+  - In Vitis, expand the platform project
+  - Navigate to: **Board Support Package → Modify BSP Settings → Overview → freeRTOS10_xilinx**
+  - Adjust settings as needed and rebuild the platform
 
 ## Hardware hookup
 
@@ -192,10 +171,8 @@ If you only need firmware development, skip steps 1–3 and use the `.xsa` alrea
 ## References
 
 1. Digilent Nexys A7 Reference Manual and schematics
-2. RealDigital Boolean Board Reference Manual
+2. Digilent Nexys 4 DDR Reference Manual and schematics
 3. TSL2561 Datasheet
-
----
-
-If you'd like, I can also add a short `scripts/README.md` that documents `create_project.tcl` outputs and exact Vivado command-line examples for Windows bash. What would you like next?
+4. Xilinx MicroBlaze Processor Reference Guide
+5. FreeRTOS Documentation
 

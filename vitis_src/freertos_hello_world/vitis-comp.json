@@ -1,0 +1,16 @@
+{
+  "name": "freertos_hello_world",
+  "type": "HOST",
+  "platform": "platform",
+  "domain": "freertos_microblaze_0",
+  "cpuInstance": "microblaze_0",
+  "cpuType": "microblaze",
+  "os": "freertos",
+  "configuration": {
+    "componentType": "HOST",
+    "hostToolchainConfigurations": []
+  },
+  "domainRealName": "freertos_microblaze_0",
+  "applicationFlow": "EMBEDDED",
+  "template": "freertos_hello_world"
+}

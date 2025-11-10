@@ -1,0 +1,32 @@
+# Vitis workspace - auto-generated files
+_ide/
+.rigel_*/
+.vitisWorkspace.json
+
+# Platform (BSP) - regenerate from .xsa
+platform/
+
+# Application build outputs
+build/
+export/
+
+# Compiled files
+*.o
+*.d
+*.elf
+*.bin
+*.pdi
+
+# IDE-generated
+compile_commands.json
+.clangd
+.compile_commands/
+
+# Logs
+logs/
+*.log
+
+# Lock files
+*.lock
+.lock
+.cache

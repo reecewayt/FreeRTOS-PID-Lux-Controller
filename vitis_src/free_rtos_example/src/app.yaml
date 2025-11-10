@@ -1,0 +1,4 @@
+domain_path: C:\ece544\project_two\FreeRTOS-PID-Lux-Controller\vitis_src\platform\export\platform\sw\freertos_microblaze_0
+app_src_dir: C:\Xilinx\Vitis\2024.2\data\embeddedsw\lib\sw_apps\empty_application
+template: empty_application
+lang: c

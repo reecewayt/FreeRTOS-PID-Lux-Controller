@@ -121,12 +121,52 @@ The design uses Nexys4IO and standard board I/O. The following summarizes the ma
 
 	Board Support Package -> Modify BSP Settings -> Overview -> freeRTOS10_xilinx
 
-## How to run full flow (Vivado -> Vitis)
+## Vitis workspace setup and BSP regeneration
+
+The `vitis_src/` directory contains example FreeRTOS applications. The platform BSP is **not tracked in git** because it's auto-generated and large. Here's how to recreate it:
+
+### Recreate the platform BSP from .xsa
+
+**Option 1: Command-line (XSCT)**
+```bash
+cd vitis_src
+xsct
+# In XSCT shell:
+platform create -name platform -hw ../hw_platform/nexys4_hw_platform.xsa -os freertos -proc microblaze_0
+platform generate
+exit
+```
+
+**Option 2: Vitis IDE**
+1. Open Vitis IDE
+2. File → New → Platform Project
+3. Platform project name: `platform`
+4. Create from XSA → Browse to `hw_platform/nexys4_hw_platform.xsa` (or `nexysa7_hw_platform.xsa`)
+5. Operating system: `freertos`
+6. Processor: `microblaze_0`
+7. Click Finish and build the platform
+
+### What's tracked in git (vitis_src)
+
+- ✅ Application source code (`src/*.c`, `src/*.h`, `src/lscript.ld`, etc.)
+- ✅ Application configuration (`vitis-comp.json`, `app.yaml`)
+- ❌ `platform/` directory (BSP - regenerate from .xsa)
+- ❌ `build/` directories (compiled binaries)
+- ❌ `_ide/` directories (IDE metadata, bitstreams)
+
+### Example applications included
+
+- `freertos_hello_world/` - Basic FreeRTOS demo with LED blinking
+- `free_rtos_example/` - FreeRTOS task/queue/semaphore example with GPIO interrupts
+
+Use these as templates for your PID controller application.
+
+## How to run full flow (Vivado → Vitis)
 
 1. From the repo root, generate the Vivado project using the script (see Quick start).
 2. Open the generated project in Vivado, run synthesis/implementation and generate bitstream.
-3. Export hardware (File -> Export -> Export Hardware) and include the bitstream; save the `.xsa` to `hw_platform/`.
-4. Open Vitis and import the `.xsa` as a new platform, then create an application project using the FreeRTOS template.
+3. Export hardware (File → Export → Export Hardware) and include the bitstream; save the `.xsa` to `hw_platform/`.
+4. Open Vitis, create the platform from the `.xsa` (see above), then create your application project.
 
 If you only need firmware development, skip steps 1–3 and use the `.xsa` already provided in `hw_platform/`.
 

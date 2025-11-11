@@ -11,6 +11,24 @@ find_package(common)
 enable_language(C ASM CXX)
 collect(PROJECT_LIB_DEPS xilstandalone;xiltimer;freertos;gloss)
 
+
+
+
+
+
+
+
+
+
+
+
+
+set(PROJECT_DRIVERS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../drivers)
+if(EXISTS ${PROJECT_DRIVERS_DIR}/CMakeLists.txt)
+    add_subdirectory(${PROJECT_DRIVERS_DIR} ${CMAKE_BINARY_DIR}/drivers)
+endif()
+
+
 collect(PROJECT_LIB_DEPS xil)
 collect(PROJECT_LIB_DEPS gcc)
 collect(PROJECT_LIB_DEPS c)
@@ -53,6 +71,9 @@ add_dependency_on_bsp(_sources)
 add_executable(${APP_NAME}.elf ${_sources})
 set_target_properties(${APP_NAME}.elf PROPERTIES LINK_DEPENDS ${USER_LINKER_SCRIPT})
 target_link_libraries(${APP_NAME}.elf -Wl,-T -Wl,\"${USER_LINKER_SCRIPT}\" -L\"${CMAKE_SOURCE_DIR}/\" -L\"${CMAKE_LIBRARY_PATH}/\" -L\"${USER_LINK_DIRECTORIES}/\" -Wl,--start-group,-l${_deps} -Wl,--end-group)
+if(TARGET nexys4io)
+    target_link_libraries(${APP_NAME}.elf nexys4io)
+endif()
 target_compile_definitions(${APP_NAME}.elf PUBLIC ${USER_COMPILE_DEFINITIONS})
 target_include_directories(${APP_NAME}.elf PUBLIC ${USER_INCLUDE_DIRECTORIES})
 print_elf_size(CMAKE_SIZE ${APP_NAME})

@@ -1,7 +1,7 @@
 {
   "design": {
     "design_info": {
-      "boundary_crc": "0x15B3F017B5B5E964",
+      "boundary_crc": "0xEBB098F310D4BD37",
       "device": "xc7a100tcsg324-1",
       "name": "embsys",
       "rev_ctrl_bd_flag": "RevCtrlBdOff",
@@ -51,7 +51,7 @@
           "TRI_I": {
             "physical_name": "gpio_btn_i_tri_i",
             "direction": "I",
-            "left": "31",
+            "left": "15",
             "right": "0"
           }
         }
@@ -79,7 +79,7 @@
           "TRI_I": {
             "physical_name": "gpio_sw_i_tri_i",
             "direction": "I",
-            "left": "31",
+            "left": "15",
             "right": "0"
           }
         }
@@ -1314,6 +1314,12 @@
           },
           "C_ALL_INPUTS_2": {
             "value": "1"
+          },
+          "C_GPIO2_WIDTH": {
+            "value": "16"
+          },
+          "C_GPIO_WIDTH": {
+            "value": "16"
           },
           "C_INTERRUPT_PRESENT": {
             "value": "1"

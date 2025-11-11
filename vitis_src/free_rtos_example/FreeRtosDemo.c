@@ -24,23 +24,27 @@ o AXI Timer 0 is a dual 32-bit timer with the Timer 0 interrupt used to generate
 #include "semphr.h"
 #include "xparameters.h"
 #include "xil_printf.h"
-#include "nexys4IO.h"
+#include "nexys4io.h"
+#include <FreeRTOSConfig.h>
 #include <stdlib.h>
+#include <xgpio_l.h>
+#include <xil_types.h>
+#include <xstatus.h>
 
 /* BSP includes. */
 #include "xtmrctr.h"
 #include "xgpio.h"
 #include "sleep.h"
 
+
+
 /*Definitions for NEXYS4IO Peripheral*/
-#define N4IO_DEVICE_ID		    0  // Use instance 0
 #define N4IO_BASEADDR		    XPAR_NEXYS4IO_0_BASEADDR
 #define N4IO_HIGHADDR		    XPAR_NEXYS4IO_0_HIGHADDR
 
 /* GPIO definitions - use exact macros from xparameters.h */
-#define GPIO_DEVICE_ID              0  // XGPIO instance 0
-#define GPIO_INTERRUPT_ID           XPAR_FABRIC_XGPIO_0_INTR  // = 1
-
+#define GPIO_0_BASEADDR         XPAR_AXI_GPIO_0_BASEADDR
+#define GPIO_INTERRUPT_ID       XPAR_FABRIC_AXI_GPIO_0_INTR // = 1
 #define BTN_CHANNEL		1
 #define SW_CHANNEL		2
 
@@ -51,6 +55,7 @@ o AXI Timer 0 is a dual 32-bit timer with the Timer 0 interrupt used to generate
 
 //Create Instances
 static XGpio xInputGPIOInstance;
+static XGpio_Config *xInputGPIOConfig; 
 
 //Function Declarations
 static void prvSetupHardware( void );
@@ -68,7 +73,7 @@ static void gpio_intr (void *pvUnused)
 {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     
-    XGpio_InterruptClear(&xInputGPIOInstance, XGPIO_IR_CH1_MASK);
+    XGpio_InterruptClear(&xInputGPIOInstance, XGPIO_IR_MASK);
     xSemaphoreGiveFromISR(binary_sem, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
@@ -101,6 +106,18 @@ void que_rx (void *p)
     }
 }
 
+void post_start_IRQ_task(void *p) {
+    (void)p; 
+    XGpio_InterruptClear(&xInputGPIOInstance, XGPIO_IR_MASK);
+    vPortEnableInterrupt( GPIO_INTERRUPT_ID );
+    /* Enable GPIO channel interrupts on button channel & switchs */
+    XGpio_InterruptEnable( &xInputGPIOInstance, XGPIO_IR_MASK);
+
+    XGpio_InterruptGlobalEnable( &xInputGPIOInstance );
+    vTaskDelete(NULL); 
+
+}
+
 int main(void)
 {
     // Announcement
@@ -110,7 +127,12 @@ int main(void)
     prvSetupHardware();
 
     //Create Semaphore
-    vSemaphoreCreateBinary(binary_sem);
+    binary_sem = xSemaphoreCreateBinary();
+
+    if(binary_sem == NULL) {
+        xil_printf("Failed to create semaphore\n");
+        return XST_FAILURE; 
+    }
 
     /* Create the queue */
     xQueue = xQueueCreate( mainQUEUE_LENGTH, sizeof( uint16_t ) );
@@ -135,6 +157,14 @@ int main(void)
                 2,
                 NULL );
     xil_printf("Task2 create status: %d\r\n", (int)task2Status);
+
+    // Create IRQ handle
+    BaseType_t taskIrqStatus = xTaskCreate(post_start_IRQ_task,
+                "IRQ_setup",
+                configMINIMAL_STACK_SIZE,
+                NULL,
+                3,
+                NULL );
     
     //Start the Scheduler
     xil_printf("Starting the scheduler\r\n");
@@ -155,7 +185,7 @@ static void prvSetupHardware( void )
 
 
     /* Initialize the GPIO for the button inputs - use DEVICE ID not BASEADDR */
-    xStatus = XGpio_Initialize( &xInputGPIOInstance, GPIO_DEVICE_ID );
+    xStatus = XGpio_Initialize( &xInputGPIOInstance, GPIO_0_BASEADDR );
     xil_printf("XGpio_Initialize status: %d\r\n", (int)xStatus);
 
     if( xStatus != XST_SUCCESS )
@@ -169,7 +199,9 @@ static void prvSetupHardware( void )
         /* Install the handler defined in this task for the button input.
         *NOTE* The FreeRTOS defined xPortInstallInterruptHandler() API function
         must be used for this purpose. */
-        BaseType_t portStatus = xPortInstallInterruptHandler( GPIO_INTERRUPT_ID, gpio_intr, NULL );
+        xInputGPIOConfig = XGpio_LookupConfig(GPIO_0_BASEADDR);
+
+        BaseType_t portStatus = xPortInstallInterruptHandler(xInputGPIOConfig->IntrId, (XInterruptHandler)gpio_intr, &xInputGPIOInstance);
         xil_printf("xPortInstallInterruptHandler status: %d\r\n", (int)portStatus);
 
 
@@ -181,15 +213,14 @@ static void prvSetupHardware( void )
             XGpio_SetDataDirection( &xInputGPIOInstance, BTN_CHANNEL, ucSetToInput );
             XGpio_SetDataDirection( &xInputGPIOInstance, SW_CHANNEL, ucSetToInput );
 
-            /* Enable the button input interrupts in the interrupt controller.
-            *NOTE* The vPortEnableInterrupt() API function must be used for this
-            purpose. */
-
-            vPortEnableInterrupt( GPIO_INTERRUPT_ID );
-
-            /* Enable GPIO channel interrupts on button channel. Can modify to include switches */
-            XGpio_InterruptEnable( &xInputGPIOInstance, XGPIO_IR_CH1_MASK );
-            XGpio_InterruptGlobalEnable( &xInputGPIOInstance );
+            // /* Enable the button input interrupts in the interrupt controller.
+            // *NOTE* The vPortEnableInterrupt() API function must be used for this
+            // purpose. */
+            // XGpio_InterruptClear(&xInputGPIOInstance, XGPIO_IR_CH1_MASK);
+            // vPortEnableInterrupt( GPIO_INTERRUPT_ID );
+            // /* Enable GPIO channel interrupts on button channel. Can modify to include switches */
+            // XGpio_InterruptEnable( &xInputGPIOInstance, XGPIO_IR_CH1_MASK );
+            // XGpio_InterruptGlobalEnable( &xInputGPIOInstance );
             
             xStatus = XST_SUCCESS;
         }

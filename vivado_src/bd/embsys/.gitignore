@@ -1,0 +1,9 @@
+# Ignore everything in this directory
+*
+
+# Except the block design files we need to check in
+!embsys.bd
+!embsys.bda
+
+# Don't ignore this .gitignore file itself
+!.gitignore

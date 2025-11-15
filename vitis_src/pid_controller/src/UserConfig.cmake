@@ -30,6 +30,10 @@ set(USER_COMPILE_SOURCES
 "led_pwm_mngr.c"
 "led_pwm_mngr.h"
 "main.c"
+"pid_controller.c"
+"pid_controller.h"
+"pid_mngr.c"
+"pid_mngr.h"
 )
 
 # -----------------------------------------

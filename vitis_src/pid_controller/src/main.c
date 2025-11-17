@@ -13,6 +13,8 @@
 
 #include "xil_types.h"
 #include "pid_mngr.h"
+#include "tsl2561.h"
+#include "xiic.h"
 
 // --- Defines for the test task ---
 #define TEST_TASK_STACK_SIZE   (configMINIMAL_STACK_SIZE)
@@ -163,6 +165,44 @@ static void prvPwm_Task_Test(void *pvParameters)
     }
 }
 
+/**
+ * @brief Test task to verify TSL2561 sensor initialization
+ * This is a one-shot task that initializes the sensor, reads the device ID,
+ * reads both channels, computes lux, and then exits. For testing purposes only.
+ */
+static void prvTSL2561_Test_Task(void *pvParameters)
+{
+    (void)pvParameters;
+    
+    XIic i2cInstance;
+    uint16_t ch0, ch1;
+    uint32_t lux;
+    
+    DEBUG_PRINT("TSL2561 Test: Starting sensor test...\n");
+    
+    // Initialize the TSL2561 sensor
+    tsl2561_init(&i2cInstance);
+    
+    DEBUG_PRINT("TSL2561 Test: Initialization complete\n");
+    
+    // Read channel 0 (broadband - visible + infrared)
+    ch0 = tsl2561_readChannel(&i2cInstance, TSL2561_CHANNEL_0);
+    DEBUG_PRINT("TSL2561 Test: Channel 0 = %u\n", ch0);
+    
+    // Read channel 1 (infrared only)
+    ch1 = tsl2561_readChannel(&i2cInstance, TSL2561_CHANNEL_1);
+    DEBUG_PRINT("TSL2561 Test: Channel 1 = %u\n", ch1);
+    
+    // Calculate lux value
+    lux = tsl2561_calculateLux(ch0, ch1);
+    DEBUG_PRINT("TSL2561 Test: Calculated Lux = %lu\n", lux);
+    
+    DEBUG_PRINT("TSL2561 Test: Test complete\n");
+    
+    // Task complete - delete itself
+    vTaskDelete(NULL);
+}
+
 int main(void)
 {
     DEBUG_PRINT("Hello welcome to project 2: ECE 544\n");
@@ -196,7 +236,17 @@ int main(void)
         NULL                    // Task handle
     );
 
-    // --- 6. Start the FreeRTOS scheduler ---
+    // --- 6. Create TSL2561 test task (temporary - for testing sensor) ---
+    xTaskCreate(
+        prvTSL2561_Test_Task,   // Task function
+        "TSL2561_Test",         // Task name
+        configMINIMAL_STACK_SIZE, // Stack size
+        NULL,                   // Parameters
+        tskIDLE_PRIORITY + 2,   // Priority
+        NULL                    // Task handle
+    );
+
+    // --- 7. Start the FreeRTOS scheduler ---
     DEBUG_PRINT("Starting FreeRTOS scheduler...\n");
     vTaskStartScheduler();
 

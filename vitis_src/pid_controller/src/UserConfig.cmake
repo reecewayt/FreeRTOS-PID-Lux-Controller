@@ -34,6 +34,7 @@ set(USER_COMPILE_SOURCES
 "pid_controller.h"
 "pid_mngr.c"
 "pid_mngr.h"
+"tsl2561.c"
 )
 
 # -----------------------------------------

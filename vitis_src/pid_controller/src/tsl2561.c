@@ -1,19 +1,3 @@
-/**
- * @file tsl2561.c
- * @brief TSL2561 Light Sensor Driver for Xilinx IIC
- * 
- * This driver provides minimal functionality for the TSL2561 light sensor,
- * including initialization, channel reading, and lux calculation.
- * 
- * Implementation adapted from Adafruit TSL2561 driver:
- * https://github.com/adafruit/Adafruit_TSL2561/blob/master/Adafruit_TSL2561_U.cpp
- * 
- * Driver code generated with assistance from GitHub Copilot.
- * 
- * @note Uses Xilinx IIC driver API for I2C communication
- * @note Configured for 13ms integration time and 1x gain
- */
-
 #include "tsl2561.h"
 #include "xparameters.h"
 #include "logging.h"

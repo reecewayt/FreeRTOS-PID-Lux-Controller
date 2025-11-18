@@ -35,6 +35,8 @@ set(USER_COMPILE_SOURCES
 "pid_mngr.c"
 "pid_mngr.h"
 "tsl2561.c"
+"log_mngr.c"
+"lux_mngr.c"
 )
 
 # -----------------------------------------

@@ -54,6 +54,32 @@ collect(PROJECT_LIB_DEPS xilstandalone;xiltimer;freertos;gloss)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 set(PROJECT_DRIVERS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../drivers)
 if(EXISTS ${PROJECT_DRIVERS_DIR}/CMakeLists.txt)
     add_subdirectory(${PROJECT_DRIVERS_DIR} ${CMAKE_BINARY_DIR}/drivers)

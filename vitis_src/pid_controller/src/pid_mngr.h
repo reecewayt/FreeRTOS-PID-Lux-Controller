@@ -1,3 +1,12 @@
+/**
+ * @file pid_mngr.c
+ * @brief PID Manager Task Implementation
+ * 
+ * This module implements the FreeRTOS tasks for managing the PID controller:
+ * - User Input Task: Processes GPIO interrupts from switches and buttons
+ * - PID Compute Task: Computes PID output and updates LED PWM duty cycle
+ */
+
 #pragma once
 
 #include "xil_types.h"

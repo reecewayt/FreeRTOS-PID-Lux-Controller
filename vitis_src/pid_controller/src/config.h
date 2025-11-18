@@ -2,5 +2,5 @@
 
 
 // flag used by logging utility
-// comment out to disable printf's 
+// comment out to disable DEBUG
 #define DEBUG_1 

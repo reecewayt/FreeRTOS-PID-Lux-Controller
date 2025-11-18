@@ -1,3 +1,27 @@
+/**
+ * @file pid_controller.c
+ * @brief Integer-based PID Controller Implementation
+ * 
+ * This module implements a PID controller using integer arithmetic.
+ * The implementation includes:
+ * - Standard PID algorithm with configurable integer gains
+ * - Integral anti-windup using clamping
+ * - Output saturation (0-255 for PWM duty cycle)
+ * - Individual enable/disable for P, I, D terms
+ * - Standard derivative calculation
+ * - Exponential moving average output filtering
+ * 
+ * Input: uint32_t lux measurement from TLS2561 sensor
+ * Output: uint8_t PWM duty cycle (0-255)
+ * 
+ * @note The output cast from int32_t to uint8_t is a design choice knowing that 
+ * the output range for the pwm cycle can only be 0-255. This works but with a significant 
+ * loss of information if the PID output were to exceed this range.
+ * 
+ * @author Reece Wayt & Marco Martinez
+ * @date 2025
+ */
+
 #pragma once
 
 #include "xil_types.h"
@@ -10,15 +34,16 @@
 #define PID_ERROR_NOT_INIT      -2
 #define PID_ERROR_INVALID_PARAM -3
 
-/* Gain scaling factor - gains are multiplied by this for precision */
-#define PID_GAIN_SCALE          1000
-
 /* Default settings */ 
 #define PID_DEFAULT_OUTPUT_MAX  255
 #define PID_DEFAULT_OUTPUT_MIN  0
-#define PID_INTEGRAL_MAX        100000  /* Scaled integral limit */
-#define PID_INTEGRAL_MIN        -100000 /* Scaled integral limit */
+#define PID_INTEGRAL_MAX        100  /* Scaled integral limit */
+#define PID_INTEGRAL_MIN        -100 /* Scaled integral limit */
 #define PID_DEFAULT_SAMPLE_TIME_MS 100
+#define PID_DEFAULT_MAX_SETPOINT 999    // Max value 7-seg can display
+
+/* Output filtering */
+#define PID_FILTER_SHIFT        2    /* Smoothing factor: 1/4 new, 3/4 old (adjust 1-3 for more/less smoothing) */
 
 /* Control term enable flags */
 #define PID_ENABLE_P            (1 << 0)  /* Bit 0: Proportional */
@@ -35,13 +60,12 @@ typedef enum {
 /**
  * @brief PID Controller Configuration Structure
  * 
- * Note: Gains (kp, ki, kd) are scaled by PID_GAIN_SCALE (1000) for precision.
- * For example, to set Kp = 1.5, use kp = 1500
+ * Note: Gains are direct integer values without scaling.
  */
 typedef struct {
-    uint32_t kp;             /**< Proportional gain (Kp * PID_GAIN_SCALE) */
-    uint32_t ki;             /**< Integral gain (Ki * PID_GAIN_SCALE) */
-    uint32_t kd;             /**< Derivative gain (Kd * PID_GAIN_SCALE) */
+    volatile uint32_t kp;             /**< Proportional gain */
+    volatile uint32_t ki;             /**< Integral gain */
+    volatile uint32_t kd;             /**< Derivative gain */
     
     int32_t output_min;     /**< Minimum output value (saturation) 0-255 */
     int32_t output_max;     /**< Maximum output value (saturation) 0-255 */
@@ -49,11 +73,11 @@ typedef struct {
     int32_t integral_max;   /**< Maximum integral term (anti-windup, scaled) */
     int32_t integral_min;   /**< Minimum integral term (anti-windup, scaled) */
     
-    uint32_t setpoint;      /**< Setpoint for controller (lux value) */ 
+    volatile uint32_t setpoint;      /**< Setpoint for controller (lux value) */ 
     uint32_t max_setpoint;  /**< Maximum setpoint that makes sense for plant */
     
-    uint8_t enable_flags;   /**< Enable/disable P, I, D terms (bit flags) */
-    step_incr_t step;       /**< Step increment for constant terms (i.e. +/- 1, 5, and 10) */
+    volatile uint8_t enable_flags;   /**< Enable/disable P, I, D terms (bit flags) */
+    volatile step_incr_t step;       /**< Step increment for constant terms (i.e. +/- 1, 5, and 10) */
     
     uint32_t sample_time_ms; /**< Sample time in milliseconds (for Ki, Kd scaling) */
 } PID_Config;
@@ -66,15 +90,16 @@ typedef struct {
     PID_Config config;
     
     /* State variables */
-    int32_t integral;       /**< Accumulated integral term (scaled) */
-    int32_t prev_error;     /**< Previous error (for derivative) */
-    uint32_t prev_measurement; /**< Previous measurement (for derivative-on-measurement) */
+    volatile int32_t integral;       /**< Accumulated integral term (scaled) */
+    volatile int32_t prev_error;     /**< Previous error (for derivative) */
+    volatile uint32_t prev_measurement; /**< Previous measurement (for derivative-on-measurement) */
+    volatile int32_t filtered_output; /**< Smoothed output accumulator for exponential filtering */
     
     /* Output terms (for debugging/monitoring) */
-    int32_t p_term;         /**< Last proportional term (scaled) */
-    int32_t i_term;         /**< Last integral term (scaled) */
-    int32_t d_term;         /**< Last derivative term (scaled) */
-    uint8_t output;         /**< Last controller output (0-255 for PWM) */
+    volatile int32_t p_term;         /**< Last proportional term (scaled) */
+    volatile int32_t i_term;         /**< Last integral term (scaled) */
+    volatile int32_t d_term;         /**< Last derivative term (scaled) */
+    volatile uint8_t output;         /**< Last controller output (0-255 for PWM) */
     
     /* Flags */
     bool initialized;       /**< Initialization flag */
@@ -117,6 +142,7 @@ int32_t PID_SetEnableFlags(PID_Controller *pid, uint8_t enable_flags);
  * @brief Compute PID controller output
  * 
  * This is the main PID calculation function. Call this at each control loop iteration.
+ * Uses direct integer arithmetic without gain scaling.
  * 
  * @param pid Pointer to PID controller structure
  * @param measurement Current measured lux value (uint32_t)

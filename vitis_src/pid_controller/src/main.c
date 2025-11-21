@@ -1,6 +1,60 @@
 /**
- * main.c - Initializes system and then hands off to FreeRTOS 
- * scheduler
+ * @file main.c
+ * @brief FreeRTOS-based PID Lux Controller Application
+ * 
+ * This embedded system implements a closed-loop PID controller that maintains a target
+ * light level (lux) by adjusting LED brightness via PWM. The application runs on a
+ * MicroBlaze soft processor with FreeRTOS for task management.
+ * 
+ * SYSTEM ARCHITECTURE:
+ * 
+ * 1. Lux Manager Task (lux_mngr.c)
+ *    - Periodically reads TSL2561 light sensor via I2C (configurable sample rate)
+ *    - Calculates lux value from raw sensor data
+ *    - Posts measurements to PID Compute Task via queue
+ * 
+ * 2. PID Manager Tasks (pid_mngr.c)
+ *    a) User Input Task:
+ *       - Processes GPIO interrupts from switches and buttons
+ *       - Configures PID parameters (Kp, Ki, Kd gains and setpoint)
+ *       - Enables/disables P, I, D control terms
+ *       - Adjustable step increments (±1, ±5, ±10)
+ *    
+ *    b) PID Compute Task:
+ *       - Receives lux measurements from Lux Manager
+ *       - Executes PID control algorithm with integer arithmetic
+ *       - Applies output filtering for smooth PWM transitions
+ *       - Posts PWM duty cycle (0-255) to LED PWM Manager
+ *       - Sends control data to Log Manager
+ * 
+ * 3. LED PWM Manager Task (led_pwm_mngr.c)
+ *    - Receives PWM duty cycle commands via queue
+ *    - Controls RGB LED blue channel via Nexys4IO hardware PWM
+ *    - Adjusts LED brightness to maintain target lux level
+ * 
+ * 4. Log Manager Task (log_mngr.c)
+ *    - Receives control system state snapshots via queue
+ *    - Outputs CSV-formatted data for analysis (timestamp, setpoint, measured lux,
+ *      gains, P/I/D terms, PWM output)
+ *    - Updates 7-segment display showing setpoint and current lux reading
+ * 
+ * HARDWARE INTERFACES:
+ * - TSL2561 Light Sensor (I2C)
+ * - Nexys4 GPIO (buttons and switches for user input)
+ * - Nexys4IO Custom Peripheral (RGB LED PWM, 7-segment display) provided by ECE 544 professor
+ * 
+ * 
+ * CONTROL FEATURES:
+ * - Integer-based PID with configurable gains
+ * - Integral anti-windup protection
+ * - Output saturation (0-255 for 8-bit PWM)
+ * - Exponential moving average output filtering
+ * - Individual P/I/D term enable/disable
+ * - Real-time parameter tuning via hardware interface
+ * 
+ * @author Reece Wayt & Marco Martinez
+ * @date 2025
+ * @note Code was developed with assistance from Github Copilot
  */
 #include "FreeRTOS.h"
 #include "task.h"
@@ -13,11 +67,11 @@
 
 #include "xil_types.h"
 #include "pid_mngr.h"
+#include "tsl2561.h"
+#include "xiic.h"
+#include "lux_mngr.h"
+#include "log_mngr.h"
 
-// --- Defines for the test task ---
-#define TEST_TASK_STACK_SIZE   (configMINIMAL_STACK_SIZE)
-#define TEST_TASK_PRIORITY     (tskIDLE_PRIORITY + 1)
-#define TEST_TASK_DELAY_MS     (1000)
 
 #define GPIO_0_BASEADDR         XPAR_AXI_GPIO_0_BASEADDR
 #define GPIO_INTERRUPT_ID       XPAR_FABRIC_AXI_GPIO_0_INTR // = 1
@@ -45,10 +99,11 @@ static void gpio_isr(void *pvUnused)
 
     // Package into user input state
     UserInputState_t newState;
-    newState.sw = (uint8_t)tempSwState;
+    newState.sw = (uint8_t)tempSwState;     // uses only lower 8 bits for our app
     newState.btn = (uint8_t)tempBtnState;
 
     // Post the new input state to the user input task (from ISR)
+    // this will unblock the task if it is waiting
     xUserInput_PostFromISR(newState, &xHigherPriorityTaskWoken);
     
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
@@ -128,65 +183,27 @@ static void prvPostStartIRQ_Task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-/**
- * @brief Test task to post new PWM values to the LED manager
- */
-//TODO: Remove this test task once integration is complete
-static void prvPwm_Task_Test(void *pvParameters)
-{
-    // Cast unused parameter to void to prevent compiler warnings
-    (void)pvParameters; 
-    
-    u8 newDutyCycle = 0; 
-    u8 dutyCycleIncr = 32;   // We will cycle through 8 light intensity values
-    TickType_t xDelay = pdMS_TO_TICKS(TEST_TASK_DELAY_MS);
 
-    DEBUG_PRINT("Starting PWM test task...\n");
-
-    for (;;) {
-        // Post the new duty cycle to the LED manager's queue
-        if (xLEDPwm_PostDutyCycle(newDutyCycle) != pdPASS)
-        {
-            DEBUG_PRINT("Failed to post to PWM queue (queue full?)\n");
-        }
-        else
-        {
-            //DEBUG_PRINT("Posted new duty cycle: %d\n", (int)newDutyCycle);
-        }
-
-        // Increment the duty cycle. 
-        // Note: u8 will automatically wrap from 224 + 32 = 256 back to 0.
-        newDutyCycle += dutyCycleIncr;
-
-        // Block this task for 1 second
-        vTaskDelay(xDelay);
-    }
-}
 
 int main(void)
 {
     DEBUG_PRINT("Hello welcome to project 2: ECE 544\n");
 
-    // --- 1. Initialize GPIO hardware (before scheduler) ---
     prvSetupGPIO();
 
-    // --- 2. Initialize PID Manager and create tasks ---
     vPID_TaskCreate();
 
-    // --- 3. Initialize the LED PWM Manager task ---
-    vLedPwm_TaskInit(); 
+    vLedPwm_TaskInit();
 
-    // --- 4. Create the test task (temporary - for testing PWM) ---
-    xTaskCreate(
-        prvPwm_Task_Test,       // Pointer to the task function
-        "PWM_Test",             // Text name for debugging
-        TEST_TASK_STACK_SIZE,   // Stack depth
-        NULL,                   // Task parameters (none)
-        TEST_TASK_PRIORITY,     // Task priority
-        NULL                    // Task handle (none)
-    );
+    if (vLogMngr_Init() != pdPASS) {
+        DEBUG_PRINT("WARNING: Failed to initialize Log Manager\n");
+    } 
+    
+    if (vLuxMngr_Init(100) != pdPASS) {
+        DEBUG_PRINT("WARNING: Failed to initialize Lux Manager\n");
+    }
 
-    // --- 5. Create one-shot task to enable interrupts after scheduler starts ---
+    
     xTaskCreate(
         prvPostStartIRQ_Task,   // Task function
         "IRQ_Setup",            // Task name
@@ -196,7 +213,7 @@ int main(void)
         NULL                    // Task handle
     );
 
-    // --- 6. Start the FreeRTOS scheduler ---
+    
     DEBUG_PRINT("Starting FreeRTOS scheduler...\n");
     vTaskStartScheduler();
 

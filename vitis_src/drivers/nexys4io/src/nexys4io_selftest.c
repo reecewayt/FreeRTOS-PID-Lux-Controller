@@ -54,15 +54,15 @@ XStatus NEXYS4IO_Reg_SelfTest(u32 baseaddr)
 	int read_loop_index;
 
 
-	xil_printf("******************************\n\r");
-	xil_printf("* Nexys4IO Peripheral Self Test\n\r");
-	xil_printf("******************************\n\n\r");
+	//xil_printf("******************************\n\r");
+	//xil_printf("* Nexys4IO Peripheral Self Test\n\r");
+	//xil_printf("******************************\n\n\r");
 
 	/*
 	 * Write to user logic slave module register(s) and read back
 	 */
 
-	xil_printf("User logic slave module test...\n\r");
+	//xil_printf("User logic slave module test...\n\r");
 	// write values to the first 4 registers
 	for (write_loop_index = 0 ; write_loop_index < 4; write_loop_index++)
 	{
@@ -88,7 +88,7 @@ XStatus NEXYS4IO_Reg_SelfTest(u32 baseaddr)
 		}
 	}
 
-	xil_printf("   - slave register write/read passed\n\n\r");
+	//xil_printf("   - slave register write/read passed\n\n\r");
 
 	return XST_SUCCESS;
 }

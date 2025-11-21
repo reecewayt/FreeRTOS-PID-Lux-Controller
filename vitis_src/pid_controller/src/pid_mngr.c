@@ -1,5 +1,7 @@
 #include "pid_controller.h"
 #include "pid_mngr.h"
+#include "led_pwm_mngr.h"
+#include "log_mngr.h"
 
 #define LOG_TAG "PID_MNGR"
 #include "logging.h" 
@@ -128,17 +130,17 @@ void vPID_TaskCreate(void) {
     // Initialize PID controller with defaults
     PID_Init(&_pid);
     
-    // Configure initial parameters (Manager owns configuration)
-    _pid.config.kp = 1000;              // Kp = 1.0
-    _pid.config.ki = 100;               // Ki = 0.1
-    _pid.config.kd = 50;                // Kd = 0.05
-    _pid.config.setpoint = 500;         // Target 500 lux
-    _pid.config.max_setpoint = 65535;   // Max 65535 lux
+    // Configure initial parameters 
+    _pid.config.kp = 0;              
+    _pid.config.ki = 0;               
+    _pid.config.kd = 0;                
+    _pid.config.setpoint = 50;         
+    _pid.config.max_setpoint = PID_DEFAULT_MAX_SETPOINT; 
     _pid.config.output_min = 0;         // PWM min
     _pid.config.output_max = 255;       // PWM max
-    _pid.config.integral_min = -100000; // Integral anti-windup min
-    _pid.config.integral_max = 100000;  // Integral anti-windup max
-    _pid.config.enable_flags = PID_ENABLE_ALL;  // Enable all terms
+    _pid.config.integral_min = PID_INTEGRAL_MIN; // Integral anti-windup min
+    _pid.config.integral_max = PID_INTEGRAL_MAX;  // Integral anti-windup max
+    _pid.config.enable_flags = ~(PID_ENABLE_ALL);  // Disable all terms
     _pid.config.step = LOW_INCR;        // Default step increment +/-1
     
     DEBUG_PRINT("PID Controller initialized\n");
@@ -339,13 +341,41 @@ static void vPIDCompute_Task(void *pvParameters) {
             // Acquire mutex before accessing PID state
             if(xSemaphoreTake(xPIDMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
                 
-                // Compute PID output
+                // Enter critical section - disable interrupts for atomic PID computation
+                taskENTER_CRITICAL();
+                
+                // Compute PID output (critical - must be atomic)
                 pwm_duty = PID_Compute(&_pid, lux_measurement);
+                
+                // Prepare log data while we have mutex and interrupts disabled
+                LogData_t logData;
+                logData.timestamp_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                logData.lux_setpoint = _pid.config.setpoint;
+                logData.lux_measured = lux_measurement;
+                logData.kp = _pid.config.kp;
+                logData.ki = _pid.config.ki;
+                logData.kd = _pid.config.kd;
+                logData.p_term = _pid.p_term;
+                logData.i_term = _pid.i_term;
+                logData.d_term = _pid.d_term;
+                logData.pid_output = pwm_duty;
+                
+                // Exit critical section - re-enable interrupts
+                taskEXIT_CRITICAL();
                 
                 xSemaphoreGive(xPIDMutex);
                 
-                // TODO: Send PWM duty cycle to LED PWM manager task
-                // For now, just log it
+                // Send PWM duty cycle to LED PWM manager task
+                BaseType_t pwm_status = xLEDPwm_PostDutyCycle(pwm_duty);
+                
+                if (pwm_status != pdPASS) {
+                    DEBUG_PRINT("WARNING: Failed to post PWM duty cycle to LED manager\n");
+                }
+                
+                // Post data to logging task
+                xLogMngr_Post(&logData);
+                
+                // Log PID computation details (debug only)
                 DEBUG_PRINT("Lux=%u, Setpoint=%u, PWM=%u, P=%d, I=%d, D=%d\n", 
                            lux_measurement, _pid.config.setpoint, pwm_duty,
                            _pid.p_term, _pid.i_term, _pid.d_term);
